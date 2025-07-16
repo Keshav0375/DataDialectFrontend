@@ -1,25 +1,29 @@
+// src/components/ChatInterface.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Minimize2, Maximize2, X, History, Download, Trash2, Code } from 'lucide-react';
+import { Send, Minimize2, Maximize2, X, History, Download, Trash2, Code, AlertCircle } from 'lucide-react';
 import { ChatMessage, ChatbotType } from '../types';
+import { useSQLChat } from '../hooks/useSQLChat';
 
 interface ChatInterfaceProps {
   isOpen: boolean;
   chatbotType: ChatbotType;
-  messages: ChatMessage[];
-  isTyping: boolean;
-  onSendMessage: (message: string) => void;
+  messages?: ChatMessage[];
+  isTyping?: boolean;
+  onSendMessage?: (message: string) => void;
   onClose: () => void;
-  onClear: () => void;
+  onClear?: () => void;
+  uploadId?: string; // For SQL chatbot
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   isOpen,
   chatbotType,
-  messages,
-  isTyping,
-  onSendMessage,
+  messages: externalMessages = [],
+  isTyping: externalIsTyping = false,
+  onSendMessage: externalOnSendMessage,
   onClose,
-  onClear,
+  onClear: externalOnClear,
+  uploadId,
 }) => {
   const [input, setInput] = useState('');
   const [isMinimized, setIsMinimized] = useState(false);
@@ -27,21 +31,54 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Use SQL chat hook for SQL chatbot
+  const sqlChat = useSQLChat({ 
+    uploadId: chatbotType === 'sql' ? uploadId || null : null 
+  });
+
+  // Determine which chat system to use
+  const isUsingSQLChat = chatbotType === 'sql' && uploadId;
+  const messages = isUsingSQLChat ? sqlChat.messages : externalMessages;
+  const isTyping = isUsingSQLChat ? sqlChat.isTyping : externalIsTyping;
+  const error = isUsingSQLChat ? sqlChat.error : null;
+
+  // Initialize SQL chat if needed
+  useEffect(() => {
+    if (isUsingSQLChat && isOpen) {
+      sqlChat.initializeChat();
+    }
+  }, [isUsingSQLChat, isOpen, sqlChat]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim()) {
-      onSendMessage(input.trim());
-      setInput('');
+    if (!input.trim()) return;
+
+    const messageContent = input.trim();
+    setInput('');
+
+    if (isUsingSQLChat) {
+      await sqlChat.sendMessage(messageContent);
+    } else if (externalOnSendMessage) {
+      externalOnSendMessage(messageContent);
+    }
+  };
+
+  const handleClear = () => {
+    if (isUsingSQLChat) {
+      sqlChat.clearChat();
+    } else if (externalOnClear) {
+      externalOnClear();
     }
   };
 
   const exportChat = () => {
     const chatData = {
       chatbotType,
+      uploadId,
       messages,
       exportedAt: new Date().toISOString(),
     };
@@ -49,7 +86,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `chat-export-${Date.now()}.json`;
+    a.download = `chat-export-${chatbotType}-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -60,7 +97,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return {
           name: 'SQL Explorer',
           color: 'from-blue-500 to-cyan-500',
-          description: 'Connected to SQL Database',
+          description: uploadId ? 'Connected to SQL Database' : 'SQL Database (Not Connected)',
         };
       case 'document':
         return {
@@ -83,9 +120,45 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
+  const renderMessage = (message: ChatMessage) => {
+    return (
+      <div
+        key={message.id}
+        className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+      >
+        <div
+          className={`max-w-[80%] p-3 rounded-2xl ${
+            message.type === 'user'
+              ? 'bg-gradient-to-r from-[#00FF9A] to-[#00FFE5] text-black'
+              : 'bg-[#252525] text-white'
+          }`}
+        >
+          {message.isCode ? (
+            <div className="flex items-start gap-2">
+              <Code size={16} className="mt-1 flex-shrink-0" />
+              <pre className="text-sm overflow-x-auto whitespace-pre-wrap">
+                <code>{message.content}</code>
+              </pre>
+            </div>
+          ) : (
+            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          )}
+          <p className={`text-xs mt-1 ${
+            message.type === 'user' ? 'text-black/70' : 'text-gray-400'
+          }`}>
+            {message.timestamp.toLocaleTimeString()}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   if (!isOpen) return null;
 
   const chatbotInfo = getChatbotInfo();
+
+  // Show connection warning for SQL chatbot without uploadId
+  const showConnectionWarning = chatbotType === 'sql' && !uploadId;
 
   // Maximized view (full screen)
   if (isMaximized) {
@@ -117,7 +190,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <Download size={20} />
             </button>
             <button
-              onClick={onClear}
+              onClick={handleClear}
               className="p-3 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-[#252525]"
               title="Clear chat"
             >
@@ -140,45 +213,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         </div>
 
+        {/* Connection Warning */}
+        {showConnectionWarning && (
+          <div className="mx-6 mt-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center gap-3">
+            <AlertCircle size={20} className="text-yellow-400 flex-shrink-0" />
+            <div>
+              <p className="text-yellow-400 text-sm font-medium">Database Not Connected</p>
+              <p className="text-yellow-400/80 text-xs">Please complete the database setup to start chatting.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <div className="mx-6 mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3">
+            <AlertCircle size={20} className="text-red-400 flex-shrink-0" />
+            <span className="text-red-400 text-sm">{error}</span>
+          </div>
+        )}
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           <div className="max-w-4xl mx-auto">
-            {messages.length === 0 && (
+            {messages.length === 0 && !showConnectionWarning && (
               <div className="text-center text-gray-400 mt-16">
                 <p className="text-lg">Start a conversation with your data!</p>
               </div>
             )}
             
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[70%] p-4 rounded-2xl ${
-                    message.type === 'user'
-                      ? 'bg-gradient-to-r from-[#00FF9A] to-[#00FFE5] text-black'
-                      : 'bg-[#1E1E1E] text-white border border-gray-800'
-                  }`}
-                >
-                  {message.isCode ? (
-                    <div className="flex items-start gap-3">
-                      <Code size={18} className="mt-1 flex-shrink-0" />
-                      <pre className="text-sm overflow-x-auto">
-                        <code>{message.content}</code>
-                      </pre>
-                    </div>
-                  ) : (
-                    <p className="text-base leading-relaxed">{message.content}</p>
-                  )}
-                  <p className={`text-xs mt-2 ${
-                    message.type === 'user' ? 'text-black/70' : 'text-gray-400'
-                  }`}>
-                    {message.timestamp.toLocaleTimeString()}
-                  </p>
-                </div>
-              </div>
-            ))}
+            {messages.map(renderMessage)}
             
             {isTyping && (
               <div className="flex justify-start">
@@ -203,12 +266,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about your data..."
+              placeholder={showConnectionWarning ? "Complete database setup to start chatting..." : "Ask about your data..."}
               className="flex-1 px-6 py-4 bg-[#121212] border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors text-lg"
+              disabled={showConnectionWarning}
             />
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || showConnectionWarning}
               className="px-8 py-4 bg-gradient-to-r from-[#00FF9A] to-[#00FFE5] text-black rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 font-medium"
             >
               <Send size={20} />
@@ -250,7 +314,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <Download size={16} />
           </button>
           <button
-            onClick={onClear}
+            onClick={handleClear}
             className="p-2 text-gray-400 hover:text-white transition-colors"
             title="Clear chat"
           >
@@ -280,44 +344,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       {!isMinimized && (
         <>
+          {/* Connection Warning */}
+          {showConnectionWarning && (
+            <div className="mx-4 mt-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center gap-2">
+              <AlertCircle size={16} className="text-yellow-400 flex-shrink-0" />
+              <div>
+                <p className="text-yellow-400 text-xs font-medium">Setup Required</p>
+                <p className="text-yellow-400/80 text-xs">Complete database setup first.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Error Display */}
+          {error && (
+            <div className="mx-4 mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2">
+              <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+              <span className="text-red-400 text-xs">{error}</span>
+            </div>
+          )}
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 h-[calc(100%-120px)]">
-            {messages.length === 0 && (
+            {messages.length === 0 && !showConnectionWarning && (
               <div className="text-center text-gray-400 mt-8">
                 <p>Start a conversation with your data!</p>
               </div>
             )}
             
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] p-3 rounded-2xl ${
-                    message.type === 'user'
-                      ? 'bg-gradient-to-r from-[#00FF9A] to-[#00FFE5] text-black'
-                      : 'bg-[#252525] text-white'
-                  }`}
-                >
-                  {message.isCode ? (
-                    <div className="flex items-start gap-2">
-                      <Code size={16} className="mt-1 flex-shrink-0" />
-                      <pre className="text-sm overflow-x-auto">
-                        <code>{message.content}</code>
-                      </pre>
-                    </div>
-                  ) : (
-                    <p className="text-sm">{message.content}</p>
-                  )}
-                  <p className={`text-xs mt-1 ${
-                    message.type === 'user' ? 'text-black/70' : 'text-gray-400'
-                  }`}>
-                    {message.timestamp.toLocaleTimeString()}
-                  </p>
-                </div>
-              </div>
-            ))}
+            {messages.map(renderMessage)}
             
             {isTyping && (
               <div className="flex justify-start">
@@ -341,12 +395,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about your data..."
+                placeholder={showConnectionWarning ? "Setup required..." : "Ask about your data..."}
                 className="flex-1 px-4 py-2 bg-[#121212] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors"
+                disabled={showConnectionWarning}
               />
               <button
                 type="submit"
-                disabled={!input.trim()}
+                disabled={!input.trim() || showConnectionWarning}
                 className="px-4 py-2 bg-gradient-to-r from-[#00FF9A] to-[#00FFE5] text-black rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 <Send size={16} />

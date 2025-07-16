@@ -17,6 +17,9 @@ function App() {
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [showNoSQLModal, setShowNoSQLModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  
+  // SQL-specific state
+  const [sqlConnection, setSqlConnection] = useState<DatabaseConnection | null>(null);
 
   const {
     messages,
@@ -44,10 +47,13 @@ function App() {
   };
 
   const handleSQLConnect = (connection: DatabaseConnection) => {
+    setSqlConnection(connection);
     setActiveChatbot('sql');
     setShowChat(true);
     setShowSQLModal(false);
-    sendMessage(`Connected to ${connection.databaseName} database successfully!`);
+    
+    // Clear any existing chat and show a connection success message
+    clearChat();
   };
 
   const handleDocumentUpload = (documents: UploadedDocument[]) => {
@@ -67,6 +73,11 @@ function App() {
   const handleCloseChat = () => {
     setShowChat(false);
     setActiveChatbot(null);
+    setSqlConnection(null);
+    clearChat();
+  };
+
+  const handleClearChat = () => {
     clearChat();
   };
 
@@ -99,11 +110,12 @@ function App() {
       <ChatInterface
         isOpen={showChat}
         chatbotType={activeChatbot}
-        messages={messages}
-        isTyping={isTyping}
-        onSendMessage={sendMessage}
+        messages={activeChatbot === 'sql' ? undefined : messages}
+        isTyping={activeChatbot === 'sql' ? undefined : isTyping}
+        onSendMessage={activeChatbot === 'sql' ? undefined : sendMessage}
         onClose={handleCloseChat}
-        onClear={clearChat}
+        onClear={activeChatbot === 'sql' ? undefined : handleClearChat}
+        uploadId={sqlConnection?.upload_id}
       />
     </div>
   );

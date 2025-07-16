@@ -13,7 +13,6 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
   const [formData, setFormData] = useState({
     hostname: '',
     databaseName: '',
-    hostUrl: '',
     password: '',
   });
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -72,7 +71,7 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
     onClose();
     // Reset state
     setCurrentStep(1);
-    setFormData({ hostname: '', databaseName: '', hostUrl: '', password: '' });
+    setFormData({ hostname: '', databaseName: '', password: '' });
     setCsvFile(null);
     setPythonFile(null);
     setConnectionStatus('idle');
@@ -82,7 +81,7 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
     onClose();
     // Reset state
     setCurrentStep(1);
-    setFormData({ hostname: '', databaseName: '', hostUrl: '', password: '' });
+    setFormData({ hostname: '', databaseName: '', password: '' });
     setCsvFile(null);
     setPythonFile(null);
     setConnectionStatus('idle');
@@ -287,20 +286,6 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
                   onChange={(e) => setFormData({ ...formData, databaseName: e.target.value })}
                   className="w-full px-4 py-3 bg-[#121212] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors"
                   placeholder="my_database"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Host URL
-                </label>
-                <input
-                  type="url"
-                  required
-                  value={formData.hostUrl}
-                  onChange={(e) => setFormData({ ...formData, hostUrl: e.target.value })}
-                  className="w-full px-4 py-3 bg-[#121212] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors"
-                  placeholder="https://database.example.com"
                 />
               </div>
 
