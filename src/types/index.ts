@@ -11,7 +11,7 @@ export interface DatabaseConnection {
   databaseName: string;
   password: string;
   isConnected: boolean;
-  upload_id?: string; // Add upload_id to track the connection
+  upload_id?: string;
 }
 
 export interface NoSQLConnection {
@@ -58,7 +58,6 @@ export interface APIError {
   status?: number;
 }
 
-
 export interface DatabaseCredentials {
   db_host: string;
   db_user: string;
@@ -72,7 +71,7 @@ export interface UploadResponse {
   upload_id: string;
 }
 
-export interface ChatMessage {
+export interface APIMessage {
   role: 'user' | 'assistant';
   content: string;
 }
@@ -80,7 +79,7 @@ export interface ChatMessage {
 export interface SQLQueryRequest {
   upload_id: string;
   question: string;
-  messages?: ChatMessage[];
+  messages?: APIMessage[];
 }
 
 export interface SQLQueryResponse {
@@ -88,11 +87,6 @@ export interface SQLQueryResponse {
   answer?: string;
   query?: string;
   upload_id: string;
-  messages?: Array<{ role: string; content: string }>;
+  messages?: APIMessage[];
   error?: string;
-}
-
-export interface APIError {
-  detail: string;
-  status?: number;
 }

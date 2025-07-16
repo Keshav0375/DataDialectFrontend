@@ -52,7 +52,7 @@ function App() {
     setShowChat(true);
     setShowSQLModal(false);
     
-    // Clear any existing chat and show a connection success message
+    // Clear any existing chat
     clearChat();
   };
 

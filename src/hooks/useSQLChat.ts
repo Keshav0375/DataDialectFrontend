@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { ChatMessage, ChatState, APIError, SQLQueryRequest } from '../types';
+import { ChatMessage, ChatState, APIError, SQLQueryRequest, APIMessage } from '../types';
 import { apiService } from '../services/api';
 
 interface UseSQLChatProps {
@@ -49,8 +49,8 @@ export const useSQLChat = ({ uploadId }: UseSQLChatProps) => {
     setChatState(prev => ({ ...prev, isTyping: true }));
 
     try {
-      // Prepare API request
-      const apiMessages = chatState.messages.map(msg => ({
+      // Prepare API request - convert chat messages to API format
+      const apiMessages: APIMessage[] = chatState.messages.map(msg => ({
         role: msg.type === 'user' ? 'user' as const : 'assistant' as const,
         content: msg.content,
       }));
@@ -62,14 +62,14 @@ export const useSQLChat = ({ uploadId }: UseSQLChatProps) => {
       };
 
       // Call API
-      const response = await apiService.queryDatabase(request);
+      const response = await apiService.queryDatabase(uploadId, request);
 
       if (response.success && response.answer) {
         // Add bot response
-        const isCodeResponse = response.query && response.answer.includes('SQL') || response.answer.includes('SELECT');
+        const isCodeResponse = response.query && (response.answer.includes('SQL') || response.answer.includes('SELECT'));
         addMessage(response.answer, 'bot', isCodeResponse);
 
-        // Optionally show the SQL query if available
+        // Optionally show the SQL query if available and different from answer
         if (response.query && response.query.trim() !== response.answer.trim()) {
           setTimeout(() => {
             addMessage(`Generated SQL Query:\n${response.query}`, 'bot', true);
@@ -83,7 +83,14 @@ export const useSQLChat = ({ uploadId }: UseSQLChatProps) => {
       }
     } catch (error: any) {
       const apiError = error as APIError;
-      const errorMessage = apiError.detail || 'Failed to send message. Please try again.';
+      let errorMessage = 'Failed to send message. Please try again.';
+      
+      if (apiError.status === 422) {
+        errorMessage = 'Invalid request format. Please check your input and try again.';
+      } else if (apiError.detail) {
+        errorMessage = apiError.detail;
+      }
+      
       addMessage(`Error: ${errorMessage}`, 'bot');
       setError(errorMessage);
     } finally {

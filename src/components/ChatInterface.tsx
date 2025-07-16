@@ -1,4 +1,3 @@
-// src/components/ChatInterface.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Minimize2, Maximize2, X, History, Download, Trash2, Code, AlertCircle } from 'lucide-react';
 import { ChatMessage, ChatbotType } from '../types';
@@ -47,7 +46,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (isUsingSQLChat && isOpen) {
       sqlChat.initializeChat();
     }
-  }, [isUsingSQLChat, isOpen, sqlChat]);
+  }, [isUsingSQLChat, isOpen, uploadId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -97,7 +96,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return {
           name: 'SQL Explorer',
           color: 'from-blue-500 to-cyan-500',
-          description: uploadId ? 'Connected to SQL Database' : 'SQL Database (Not Connected)',
+          description: uploadId ? 'Connected to SQL Database' : 'SQL Database (Setup Required)',
         };
       case 'document':
         return {
@@ -193,6 +192,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               onClick={handleClear}
               className="p-3 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-[#252525]"
               title="Clear chat"
+              disabled={showConnectionWarning}
             >
               <Trash2 size={20} />
             </button>
@@ -218,17 +218,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <div className="mx-6 mt-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center gap-3">
             <AlertCircle size={20} className="text-yellow-400 flex-shrink-0" />
             <div>
-              <p className="text-yellow-400 text-sm font-medium">Database Not Connected</p>
-              <p className="text-yellow-400/80 text-xs">Please complete the database setup to start chatting.</p>
+              <p className="text-yellow-400 text-sm font-medium">Database Setup Required</p>
+              <p className="text-yellow-400/80 text-xs">Please complete the database setup process to start chatting.</p>
             </div>
           </div>
         )}
 
         {/* Error Display */}
         {error && (
-          <div className="mx-6 mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3">
-            <AlertCircle size={20} className="text-red-400 flex-shrink-0" />
-            <span className="text-red-400 text-sm">{error}</span>
+          <div className="mx-4 mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+              <span className="text-red-400 text-xs font-medium">Error</span>
+            </div>
+            <p className="text-red-400 text-xs">{error}</p>
+            {error.includes('422') && (
+              <p className="text-red-400/80 text-xs mt-1">
+                Please check the server logs for validation details.
+              </p>
+            )}
           </div>
         )}
 
@@ -317,6 +325,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             onClick={handleClear}
             className="p-2 text-gray-400 hover:text-white transition-colors"
             title="Clear chat"
+            disabled={showConnectionWarning}
           >
             <Trash2 size={16} />
           </button>

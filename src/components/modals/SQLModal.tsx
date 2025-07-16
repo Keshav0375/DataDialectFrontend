@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Database, Loader2, CheckCircle, AlertCircle, Upload, FileText, Code, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw } from 'lucide-react';
-import { DatabaseConnection } from '../../types';
+import { DatabaseConnection, DatabaseCredentials } from '../../types';
+import { apiService } from '../../services/api';
 
 interface SQLModalProps {
   isOpen: boolean;
@@ -11,13 +12,16 @@ interface SQLModalProps {
 const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
-    hostname: '',
-    databaseName: '',
-    password: '',
+    db_host: '',
+    db_name: '',
+    db_user: '',
+    db_password: '',
   });
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [pythonFile, setPythonFile] = useState<File | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [uploadId, setUploadId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Video player states
@@ -28,25 +32,65 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
 
   const handleDatabaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsConnecting(true);
+    setIsLoading(true);
+    setError(null);
     setConnectionStatus('idle');
 
-    // Simulate connection attempt
-    setTimeout(() => {
-      setIsConnecting(false);
-      setConnectionStatus('success');
+    try {
+      const credentials: DatabaseCredentials = {
+        db_host: formData.db_host,
+        db_user: formData.db_user,
+        db_password: formData.db_password,
+        db_name: formData.db_name,
+      };
+
+      const response = await apiService.uploadCredentials(credentials);
       
-      setTimeout(() => {
-        setCurrentStep(2);
-        setConnectionStatus('idle');
-      }, 1000);
-    }, 2000);
+      if (response.success && response.upload_id) {
+        setUploadId(response.upload_id);
+        setConnectionStatus('success');
+        
+        setTimeout(() => {
+          setCurrentStep(2);
+          setConnectionStatus('idle');
+        }, 1000);
+      } else {
+        setError(response.message || 'Failed to connect to database');
+        setConnectionStatus('error');
+      }
+    } catch (err: any) {
+      setError(err.detail || 'Failed to connect to database');
+      setConnectionStatus('error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type === 'text/csv') {
       setCsvFile(file);
+    }
+  };
+
+  const handleCsvNext = async () => {
+    if (!csvFile || !uploadId) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await apiService.uploadCsv(uploadId, csvFile);
+      
+      if (response.success) {
+        setCurrentStep(3);
+      } else {
+        setError(response.message || 'Failed to upload CSV file');
+      }
+    } catch (err: any) {
+      setError(err.detail || 'Failed to upload CSV file');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -57,33 +101,46 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
     }
   };
 
-  const handleCsvNext = () => {
-    if (csvFile) {
-      setCurrentStep(3);
-    }
-  };
+  const handleFinalSubmit = async () => {
+    if (!pythonFile || !uploadId) return;
 
-  const handleFinalSubmit = () => {
-    onConnect({
-      ...formData,
-      isConnected: true,
-    });
-    onClose();
-    // Reset state
-    setCurrentStep(1);
-    setFormData({ hostname: '', databaseName: '', password: '' });
-    setCsvFile(null);
-    setPythonFile(null);
-    setConnectionStatus('idle');
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await apiService.uploadPython(uploadId, pythonFile);
+      
+      if (response.success) {
+        // Create connection object with upload_id
+        const connection: DatabaseConnection = {
+          hostname: formData.db_host,
+          databaseName: formData.db_name,
+          password: formData.db_password,
+          isConnected: true,
+          upload_id: uploadId,
+        };
+
+        onConnect(connection);
+        handleClose();
+      } else {
+        setError(response.message || 'Failed to upload Python file');
+      }
+    } catch (err: any) {
+      setError(err.detail || 'Failed to upload Python file');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleClose = () => {
     onClose();
     // Reset state
     setCurrentStep(1);
-    setFormData({ hostname: '', databaseName: '', password: '' });
+    setFormData({ db_host: '', db_name: '', db_user: '', db_password: '' });
     setCsvFile(null);
     setPythonFile(null);
+    setUploadId(null);
+    setError(null);
     setConnectionStatus('idle');
   };
 
@@ -252,6 +309,14 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
           </div>
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="mx-6 mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3">
+            <AlertCircle size={20} className="text-red-400 flex-shrink-0" />
+            <span className="text-red-400 text-sm">{error}</span>
+          </div>
+        )}
+
         <div className="p-6">
           {/* Step 1: Database Connection */}
           {currentStep === 1 && (
@@ -263,13 +328,13 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  SQL Hostname
+                  Database Host
                 </label>
                 <input
                   type="text"
                   required
-                  value={formData.hostname}
-                  onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
+                  value={formData.db_host}
+                  onChange={(e) => setFormData({ ...formData, db_host: e.target.value })}
                   className="w-full px-4 py-3 bg-[#121212] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors"
                   placeholder="localhost"
                 />
@@ -282,10 +347,24 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
                 <input
                   type="text"
                   required
-                  value={formData.databaseName}
-                  onChange={(e) => setFormData({ ...formData, databaseName: e.target.value })}
+                  value={formData.db_name}
+                  onChange={(e) => setFormData({ ...formData, db_name: e.target.value })}
                   className="w-full px-4 py-3 bg-[#121212] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors"
                   placeholder="my_database"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Username
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.db_user}
+                  onChange={(e) => setFormData({ ...formData, db_user: e.target.value })}
+                  className="w-full px-4 py-3 bg-[#121212] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors"
+                  placeholder="username"
                 />
               </div>
 
@@ -296,8 +375,8 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
                 <input
                   type="password"
                   required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  value={formData.db_password}
+                  onChange={(e) => setFormData({ ...formData, db_password: e.target.value })}
                   className="w-full px-4 py-3 bg-[#121212] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors"
                   placeholder="••••••••"
                 />
@@ -320,10 +399,10 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
 
               <button
                 type="submit"
-                disabled={isConnecting}
+                disabled={isLoading}
                 className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isConnecting ? (
+                {isLoading ? (
                   <>
                     <Loader2 size={20} className="animate-spin" />
                     Connecting...
@@ -402,15 +481,23 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
                 <button
                   onClick={() => setCurrentStep(1)}
                   className="flex-1 bg-gray-700 text-white py-3 rounded-lg font-medium hover:bg-gray-600 transition-colors"
+                  disabled={isLoading}
                 >
                   Back
                 </button>
                 <button
                   onClick={handleCsvNext}
-                  disabled={!csvFile}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                  disabled={!csvFile || isLoading}
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Next Step
+                  {isLoading ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    'Next Step'
+                  )}
                 </button>
               </div>
             </div>
@@ -484,15 +571,23 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
                 <button
                   onClick={() => setCurrentStep(2)}
                   className="flex-1 bg-gray-700 text-white py-3 rounded-lg font-medium hover:bg-gray-600 transition-colors"
+                  disabled={isLoading}
                 >
                   Back
                 </button>
                 <button
                   onClick={handleFinalSubmit}
-                  disabled={!pythonFile}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                  disabled={!pythonFile || isLoading}
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Complete Setup
+                  {isLoading ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    'Complete Setup'
+                  )}
                 </button>
               </div>
             </div>
