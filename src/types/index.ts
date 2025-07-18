@@ -92,49 +92,46 @@ export interface SQLQueryResponse {
   error?: string;
 }
 
-// New NoSQL Types
+// Backend schema creation payload
+export interface NoSQLSchema {
+  MONGO_URI: string;
+  DB_NAME: string;
+  COLLECTION_NAME: string;
+  OBJECT: Record<string, any>;
+}
+
+// Backend NoSQLState - ALL fields are required as per TypedDict
 export interface NoSQLState {
   success: boolean;
+  question: string;
+  messages: Array<{ role: string; content: string }>;
   mongo_uri: string;
   db_name: string;
   collection_name: string;
-  table_schema: any;
+  table_schema: string;
   schema_description: string;
-  few_shot_examples: any[];
-  collection_stats: any;
-  question: string;
-  messages: any[];
+  few_shot_examples: Array<Record<string, any>>;
+  collection: any;
+  collection_stats: Record<string, any>;
+  query_prompt_template: string;
+  generated_query: Array<Record<string, any>>;
+  raw_query_response: string;
+  query_results: Array<Record<string, any>>;
   result_count: number;
-  collection?: any;
-  error?: string;
-  execution_stats?: any;
-  final_answer?: string;
-  generated_query?: string;
-  query_context?: string;
-  query_prompt_template?: string;
-  query_results?: any;
-  raw_query_response?: any;
-  response_type?: string;
+  final_answer: string;
+  error: string;
+  query_context: Record<string, any>;
+  execution_stats: Record<string, any>;
+  response_type: string;
 }
 
 export interface QueryExecutionResult {
   success: boolean;
   question: string;
   answer: string;
-  query?: string;
-  result_count: number;
-  response_type: string;
-  execution_stats?: any;
+  query?: Array<Record<string, any>> | string;
+  result_count?: number;
+  response_type?: string;
+  execution_stats?: Record<string, any>;
   error?: string;
-}
-
-export interface NoSQLQueryRequest {
-  mongo_uri: string;
-  db_name: string;
-  collection_name: string;
-  table_schema: any;
-  schema_description: string;
-  few_shot_examples: any[];
-  question: string;
-  messages: any[];
 }

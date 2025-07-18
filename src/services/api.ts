@@ -8,7 +8,7 @@ import {
   NoSQLConnection,
   NoSQLState,
   QueryExecutionResult,
-  NoSQLQueryRequest,
+  NoSQLSchema,
   APIError,
 } from '../types';
 
@@ -74,28 +74,81 @@ class APIService {
     }
   }
 
-  // New NoSQL methods
+  // Fixed NoSQL methods to match backend exactly
   async createNoSQLSchema(connection: NoSQLConnection): Promise<NoSQLState> {
     try {
-      const payload = {
+      // Parse sample document if provided, otherwise use empty object
+      let sampleObject: Record<string, any> = {};
+      
+      if (connection.sampleDocument && connection.sampleDocument.trim()) {
+        try {
+          sampleObject = JSON.parse(connection.sampleDocument);
+        } catch (parseError) {
+          console.warn('Failed to parse sample document, using empty object:', parseError);
+          // Don't throw error here, just use empty object
+        }
+      }
+
+      // Match backend NoSQLSchema exactly
+      const payload: NoSQLSchema = {
         MONGO_URI: connection.connectionString,
         DB_NAME: connection.databaseName,
         COLLECTION_NAME: connection.collectionName,
-        OBJECT: connection.sampleDocument ? JSON.parse(connection.sampleDocument) : {}
+        OBJECT: sampleObject
       };
 
+      console.log('Creating NoSQL schema with payload:', {
+        DB_NAME: payload.DB_NAME,
+        COLLECTION_NAME: payload.COLLECTION_NAME,
+        hasObject: Object.keys(payload.OBJECT).length > 0,
+        hasConnectionString: !!payload.MONGO_URI
+      });
+
       const response: AxiosResponse<NoSQLState> = await api.post('/schema-creator', payload);
+      
+      if (!response.data) {
+        throw new Error('No data received from schema creation endpoint');
+      }
+
+      // Validate that all required fields are present
+      const requiredFields: (keyof NoSQLState)[] = [
+        'success', 'question', 'messages', 'mongo_uri', 'db_name', 'collection_name',
+        'table_schema', 'schema_description', 'few_shot_examples', 'collection',
+        'collection_stats', 'query_prompt_template', 'generated_query', 'raw_query_response',
+        'query_results', 'result_count', 'final_answer', 'error', 'query_context',
+        'execution_stats', 'response_type'
+      ];
+
+      const missingFields = requiredFields.filter(field => 
+        response.data[field] === undefined || response.data[field] === null
+      );
+
+      if (missingFields.length > 0) {
+        console.warn('Response missing fields:', missingFields);
+        // Don't throw error, let the backend handle field defaults
+      }
+
       return response.data;
     } catch (error: any) {
+      console.error('Schema creation error:', error);
       throw this.handleError(error, 'Failed to create NoSQL schema');
     }
   }
 
-  async executeNoSQLQuery(queryRequest: NoSQLQueryRequest): Promise<QueryExecutionResult> {
+  async executeNoSQLQuery(state: NoSQLState): Promise<QueryExecutionResult> {
     try {
-      const response: AxiosResponse<QueryExecutionResult> = await api.post('/query-execution', queryRequest);
+      console.log('Executing NoSQL query with state question:', state.question);
+
+      // Send the complete NoSQLState to the query-execution endpoint
+      const response: AxiosResponse<QueryExecutionResult> = await api.post('/query-execution', state);
+      
+      if (!response.data) {
+        throw new Error('No data received from query execution endpoint');
+      }
+
       return response.data;
     } catch (error: any) {
+      console.error('Query execution error:', error);
       throw this.handleError(error, 'Failed to execute NoSQL query');
     }
   }
@@ -110,6 +163,12 @@ class APIService {
   }
 
   private handleError(error: any, defaultMessage: string): APIError {
+    console.error('API Error Details:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
+
     // Handle 422 validation errors specifically
     if (error.response?.status === 422) {
       const validationErrors = error.response?.data?.detail;
@@ -122,6 +181,29 @@ class APIService {
           status: 422,
         };
       }
+      // Single validation error
+      if (typeof validationErrors === 'string') {
+        return {
+          detail: `Validation Error: ${validationErrors}`,
+          status: 422,
+        };
+      }
+    }
+    
+    // Handle 400 bad request errors
+    if (error.response?.status === 400) {
+      return {
+        detail: error.response?.data?.detail || error.response?.data?.message || 'Bad request',
+        status: 400,
+      };
+    }
+
+    // Handle 500 internal server errors
+    if (error.response?.status === 500) {
+      return {
+        detail: error.response?.data?.detail || error.response?.data?.message || 'Internal server error',
+        status: 500,
+      };
     }
     
     if (error.response?.data?.detail) {

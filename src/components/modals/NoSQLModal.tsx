@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Server, Loader2, Shield, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Server, Loader2, Shield, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { NoSQLConnection } from '../../types';
 import { apiService } from '../../services/api';
 
@@ -19,13 +19,20 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
   const [isConnecting, setIsConnecting] = useState(false);
   const [authStatus, setAuthStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [detailedError, setDetailedError] = useState<string>('');
+
+  const validateConnectionString = (connectionString: string): boolean => {
+    // Basic MongoDB connection string validation
+    const mongoRegex = /^mongodb(\+srv)?:\/\/.+/;
+    return mongoRegex.test(connectionString.trim());
+  };
 
   const validateSampleDocument = (document: string): boolean => {
     if (!document.trim()) return true; // Optional field
     
     try {
-      JSON.parse(document);
-      return true;
+      const parsed = JSON.parse(document);
+      return typeof parsed === 'object' && parsed !== null;
     } catch {
       return false;
     }
@@ -36,34 +43,80 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
     setIsConnecting(true);
     setAuthStatus('idle');
     setErrorMessage('');
+    setDetailedError('');
+
+    // Client-side validation
+    if (!validateConnectionString(formData.connectionString)) {
+      setIsConnecting(false);
+      setAuthStatus('error');
+      setErrorMessage('Invalid MongoDB connection string format');
+      setDetailedError('Connection string should start with mongodb:// or mongodb+srv://');
+      return;
+    }
+
+    if (!formData.databaseName.trim()) {
+      setIsConnecting(false);
+      setAuthStatus('error');
+      setErrorMessage('Database name is required');
+      return;
+    }
+
+    if (!formData.collectionName.trim()) {
+      setIsConnecting(false);
+      setAuthStatus('error');
+      setErrorMessage('Collection name is required');
+      return;
+    }
 
     // Validate sample document format
     if (formData.sampleDocument && !validateSampleDocument(formData.sampleDocument)) {
       setIsConnecting(false);
       setAuthStatus('error');
       setErrorMessage('Invalid JSON format in sample document');
+      setDetailedError('Please ensure your sample document is valid JSON');
       return;
     }
 
     try {
+      console.log('Starting NoSQL connection process...');
+
       // Test connection and create schema using the schema-creator endpoint
       const connectionData: NoSQLConnection = {
-        ...formData,
+        connectionString: formData.connectionString.trim(),
+        databaseName: formData.databaseName.trim(),
+        collectionName: formData.collectionName.trim(),
+        sampleDocument: formData.sampleDocument.trim() || undefined,
         isAuthenticated: false,
       };
 
+      console.log('Attempting to create schema for:', {
+        databaseName: connectionData.databaseName,
+        collectionName: connectionData.collectionName,
+        hasSampleDocument: !!connectionData.sampleDocument
+      });
+
       const schemaResult = await apiService.createNoSQLSchema(connectionData);
       
-      if (schemaResult.success) {
+      console.log('Schema creation successful:', {
+        success: schemaResult.success,
+        hasTableSchema: !!schemaResult.table_schema,
+        hasSchemaDescription: !!schemaResult.schema_description,
+        examplesCount: schemaResult.few_shot_examples?.length || 0,
+        collectionStats: schemaResult.collection_stats
+      });
+
+      if (schemaResult && schemaResult.table_schema) {
         setAuthStatus('success');
         
         // Wait a moment to show success message, then proceed
         setTimeout(() => {
           onConnect({
-            ...formData,
+            ...connectionData,
             isAuthenticated: true,
           });
           onClose();
+          
+          // Reset form and status
           setAuthStatus('idle');
           setFormData({ 
             connectionString: '', 
@@ -71,15 +124,39 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
             collectionName: '', 
             sampleDocument: '' 
           });
-        }, 1000);
+          setErrorMessage('');
+          setDetailedError('');
+        }, 1500);
       } else {
-        throw new Error(schemaResult.error || 'Failed to create schema');
+        throw new Error('Schema creation returned incomplete data');
       }
 
     } catch (err: any) {
       console.error('Connection failed:', err);
       setAuthStatus('error');
-      setErrorMessage(err.detail || err.message || 'Failed to connect to database');
+      
+      let errorMsg = 'Failed to connect to database';
+      let detailedMsg = '';
+      
+      if (err.detail) {
+        errorMsg = err.detail;
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      
+      // Provide specific error guidance
+      if (errorMsg.includes('connection failed') || errorMsg.includes('timeout')) {
+        detailedMsg = 'Check your connection string and ensure MongoDB is accessible';
+      } else if (errorMsg.includes('authentication')) {
+        detailedMsg = 'Verify your username and password in the connection string';
+      } else if (errorMsg.includes('database') || errorMsg.includes('collection')) {
+        detailedMsg = 'Ensure the database and collection exist and are accessible';
+      } else if (errorMsg.includes('validation')) {
+        detailedMsg = 'Check the format of your input data';
+      }
+      
+      setErrorMessage(errorMsg);
+      setDetailedError(detailedMsg);
     } finally {
       setIsConnecting(false);
     }
@@ -87,7 +164,24 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
 
   const maskConnectionString = (value: string) => {
     if (value.length <= 20) return value;
-    return value.substring(0, 10) + '•'.repeat(value.length - 20) + value.substring(value.length - 10);
+    
+    // Find the username:password part
+    const match = value.match(/mongodb(\+srv)?:\/\/([^@]+)@/);
+    if (match) {
+      const protocol = match[1] ? 'mongodb+srv://' : 'mongodb://';
+      const credentials = match[2];
+      const rest = value.substring(match[0].length);
+      
+      // Mask the credentials part
+      const maskedCredentials = credentials.length > 6 
+        ? credentials.substring(0, 2) + '•'.repeat(credentials.length - 4) + credentials.substring(credentials.length - 2)
+        : '•'.repeat(credentials.length);
+      
+      return protocol + maskedCredentials + '@' + rest;
+    }
+    
+    // Fallback masking
+    return value.substring(0, 10) + '•'.repeat(Math.max(0, value.length - 20)) + value.substring(Math.max(10, value.length - 10));
   };
 
   const getSampleDocumentPlaceholder = () => {
@@ -142,7 +236,11 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
                 required
                 value={formData.connectionString}
                 onChange={(e) => setFormData({ ...formData, connectionString: e.target.value })}
-                className="w-full px-4 py-3 bg-[#121212] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none transition-colors"
+                className={`w-full px-4 py-3 bg-[#121212] border rounded-lg text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none transition-colors ${
+                  formData.connectionString && !validateConnectionString(formData.connectionString)
+                    ? 'border-red-500'
+                    : 'border-gray-700'
+                }`}
                 placeholder="mongodb://username:password@host:port/database"
               />
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -150,9 +248,16 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
               </div>
             </div>
             {formData.connectionString && (
-              <p className="text-xs text-gray-500 mt-1 font-mono">
-                {maskConnectionString(formData.connectionString)}
-              </p>
+              <div className="mt-2">
+                <p className="text-xs text-gray-500 font-mono">
+                  {maskConnectionString(formData.connectionString)}
+                </p>
+                {!validateConnectionString(formData.connectionString) && (
+                  <p className="text-xs text-red-400 mt-1">
+                    Invalid format. Use: mongodb://username:password@host:port/database
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -187,7 +292,7 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Sample Document
-              <span className="text-xs text-gray-500 ml-2">(Optional - helps with data structure analysis)</span>
+              <span className="text-xs text-gray-500 ml-2">(Optional - helps with schema analysis)</span>
             </label>
             <textarea
               value={formData.sampleDocument}
@@ -205,28 +310,44 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
                 Invalid JSON format. Please check your document structure.
               </p>
             )}
-            <p className="text-xs text-gray-500 mt-1">
-              Paste a representative document from your collection to help understand the data structure
-            </p>
+            <div className="mt-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <div className="flex items-start gap-2">
+                <Info size={16} className="text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-blue-400 text-xs font-medium">Pro Tip</p>
+                  <p className="text-blue-400/80 text-xs mt-1">
+                    Providing a sample document helps me understand your data structure better and generate more accurate queries.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {authStatus !== 'idle' && (
-            <div className={`flex items-center gap-2 p-3 rounded-lg ${
+            <div className={`flex items-start gap-3 p-4 rounded-lg ${
               authStatus === 'success' 
                 ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
                 : 'bg-red-500/10 text-red-400 border border-red-500/20'
             }`}>
               {authStatus === 'success' ? (
-                <CheckCircle size={20} />
+                <CheckCircle size={20} className="flex-shrink-0 mt-0.5" />
               ) : (
-                <AlertCircle size={20} />
+                <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
               )}
               <div className="flex-1">
-                <span className="text-sm font-medium">
+                <p className="text-sm font-medium">
                   {authStatus === 'success' ? 'Connection successful!' : 'Connection failed'}
-                </span>
+                </p>
                 {errorMessage && authStatus === 'error' && (
-                  <p className="text-xs mt-1 opacity-80">{errorMessage}</p>
+                  <p className="text-xs mt-1 opacity-90">{errorMessage}</p>
+                )}
+                {detailedError && authStatus === 'error' && (
+                  <p className="text-xs mt-1 opacity-75">{detailedError}</p>
+                )}
+                {authStatus === 'success' && (
+                  <p className="text-xs mt-1 opacity-80">
+                    Schema analysis complete. Redirecting to chat...
+                  </p>
                 )}
               </div>
             </div>
@@ -234,18 +355,35 @@ const NoSQLModal: React.FC<NoSQLModalProps> = ({ isOpen, onClose, onConnect }) =
 
           <button
             type="submit"
-            disabled={isConnecting || (formData.sampleDocument && !validateSampleDocument(formData.sampleDocument))}
+            disabled={
+              isConnecting || 
+              !formData.connectionString.trim() ||
+              !formData.databaseName.trim() ||
+              !formData.collectionName.trim() ||
+              !validateConnectionString(formData.connectionString) ||
+              (formData.sampleDocument && !validateSampleDocument(formData.sampleDocument))
+            }
             className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isConnecting ? (
               <>
                 <Loader2 size={20} className="animate-spin" />
-                Connecting & Analyzing Schema...
+                {authStatus === 'idle' ? 'Connecting...' : 'Analyzing Schema...'}
               </>
             ) : (
               'Connect Database'
             )}
           </button>
+
+          <div className="mt-4 p-4 bg-gray-800/50 rounded-lg">
+            <h4 className="text-white text-sm font-medium mb-2">Connection Requirements:</h4>
+            <ul className="text-gray-400 text-xs space-y-1">
+              <li>• MongoDB instance must be accessible from this application</li>
+              <li>• Database and collection must exist</li>
+              <li>• User must have read permissions</li>
+              <li>• Network connectivity to MongoDB server</li>
+            </ul>
+          </div>
         </form>
       </div>
     </div>
