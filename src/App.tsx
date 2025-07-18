@@ -20,6 +20,9 @@ function App() {
   
   // SQL-specific state
   const [sqlConnection, setSqlConnection] = useState<DatabaseConnection | null>(null);
+  
+  // NoSQL-specific state
+  const [noSQLConnection, setNoSQLConnection] = useState<NoSQLConnection | null>(null);
 
   const {
     messages,
@@ -64,16 +67,20 @@ function App() {
   };
 
   const handleNoSQLConnect = (connection: NoSQLConnection) => {
+    setNoSQLConnection(connection);
     setActiveChatbot('nosql');
     setShowChat(true);
     setShowNoSQLModal(false);
-    sendMessage(`Connected to ${connection.databaseName}.${connection.collectionName} successfully!`);
+    
+    // Clear any existing chat
+    clearChat();
   };
 
   const handleCloseChat = () => {
     setShowChat(false);
     setActiveChatbot(null);
     setSqlConnection(null);
+    setNoSQLConnection(null);
     clearChat();
   };
 
@@ -110,12 +117,13 @@ function App() {
       <ChatInterface
         isOpen={showChat}
         chatbotType={activeChatbot}
-        messages={activeChatbot === 'sql' ? undefined : messages}
-        isTyping={activeChatbot === 'sql' ? undefined : isTyping}
-        onSendMessage={activeChatbot === 'sql' ? undefined : sendMessage}
+        messages={activeChatbot === 'sql' || activeChatbot === 'nosql' ? undefined : messages}
+        isTyping={activeChatbot === 'sql' || activeChatbot === 'nosql' ? undefined : isTyping}
+        onSendMessage={activeChatbot === 'sql' || activeChatbot === 'nosql' ? undefined : sendMessage}
         onClose={handleCloseChat}
-        onClear={activeChatbot === 'sql' ? undefined : handleClearChat}
+        onClear={activeChatbot === 'sql' || activeChatbot === 'nosql' ? undefined : handleClearChat}
         uploadId={sqlConnection?.upload_id}
+        noSQLConnection={noSQLConnection}
       />
     </div>
   );

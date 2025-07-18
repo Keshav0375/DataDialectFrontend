@@ -5,6 +5,10 @@ import {
   UploadResponse,
   SQLQueryRequest,
   SQLQueryResponse,
+  NoSQLConnection,
+  NoSQLState,
+  QueryExecutionResult,
+  NoSQLQueryRequest,
   APIError,
 } from '../types';
 
@@ -67,6 +71,32 @@ class APIService {
       return response.data;
     } catch (error: any) {
       throw this.handleError(error, 'Failed to query database');
+    }
+  }
+
+  // New NoSQL methods
+  async createNoSQLSchema(connection: NoSQLConnection): Promise<NoSQLState> {
+    try {
+      const payload = {
+        MONGO_URI: connection.connectionString,
+        DB_NAME: connection.databaseName,
+        COLLECTION_NAME: connection.collectionName,
+        OBJECT: connection.sampleDocument ? JSON.parse(connection.sampleDocument) : {}
+      };
+
+      const response: AxiosResponse<NoSQLState> = await api.post('/schema-creator', payload);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error, 'Failed to create NoSQL schema');
+    }
+  }
+
+  async executeNoSQLQuery(queryRequest: NoSQLQueryRequest): Promise<QueryExecutionResult> {
+    try {
+      const response: AxiosResponse<QueryExecutionResult> = await api.post('/query-execution', queryRequest);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error, 'Failed to execute NoSQL query');
     }
   }
 

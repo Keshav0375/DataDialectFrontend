@@ -18,6 +18,7 @@ export interface NoSQLConnection {
   connectionString: string;
   databaseName: string;
   collectionName: string;
+  sampleDocument?: string;
   isAuthenticated: boolean;
 }
 
@@ -89,4 +90,51 @@ export interface SQLQueryResponse {
   upload_id: string;
   messages?: APIMessage[];
   error?: string;
+}
+
+// New NoSQL Types
+export interface NoSQLState {
+  success: boolean;
+  mongo_uri: string;
+  db_name: string;
+  collection_name: string;
+  table_schema: any;
+  schema_description: string;
+  few_shot_examples: any[];
+  collection_stats: any;
+  question: string;
+  messages: any[];
+  result_count: number;
+  collection?: any;
+  error?: string;
+  execution_stats?: any;
+  final_answer?: string;
+  generated_query?: string;
+  query_context?: string;
+  query_prompt_template?: string;
+  query_results?: any;
+  raw_query_response?: any;
+  response_type?: string;
+}
+
+export interface QueryExecutionResult {
+  success: boolean;
+  question: string;
+  answer: string;
+  query?: string;
+  result_count: number;
+  response_type: string;
+  execution_stats?: any;
+  error?: string;
+}
+
+export interface NoSQLQueryRequest {
+  mongo_uri: string;
+  db_name: string;
+  collection_name: string;
+  table_schema: any;
+  schema_description: string;
+  few_shot_examples: any[];
+  question: string;
+  messages: any[];
 }

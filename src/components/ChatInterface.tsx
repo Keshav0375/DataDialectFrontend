@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Minimize2, Maximize2, X, History, Download, Trash2, Code, AlertCircle } from 'lucide-react';
-import { ChatMessage, ChatbotType } from '../types';
+import { ChatMessage, ChatbotType, NoSQLConnection } from '../types';
 import { useSQLChat } from '../hooks/useSQLChat';
+import { useNoSQLChat } from '../hooks/useNoSQLChat';
 
 interface ChatInterfaceProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface ChatInterfaceProps {
   onClose: () => void;
   onClear?: () => void;
   uploadId?: string; // For SQL chatbot
+  noSQLConnection?: NoSQLConnection; // For NoSQL chatbot
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -23,6 +25,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onClose,
   onClear: externalOnClear,
   uploadId,
+  noSQLConnection,
 }) => {
   const [input, setInput] = useState('');
   const [isMinimized, setIsMinimized] = useState(false);
@@ -30,23 +33,41 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Use SQL chat hook for SQL chatbot
+  // Use appropriate chat hook based on chatbot type
   const sqlChat = useSQLChat({ 
     uploadId: chatbotType === 'sql' ? uploadId || null : null 
   });
 
+  const noSQLChat = useNoSQLChat({
+    connection: chatbotType === 'nosql' ? noSQLConnection || null : null
+  });
+
   // Determine which chat system to use
   const isUsingSQLChat = chatbotType === 'sql' && uploadId;
-  const messages = isUsingSQLChat ? sqlChat.messages : externalMessages;
-  const isTyping = isUsingSQLChat ? sqlChat.isTyping : externalIsTyping;
-  const error = isUsingSQLChat ? sqlChat.error : null;
+  const isUsingNoSQLChat = chatbotType === 'nosql' && noSQLConnection?.isAuthenticated;
+  
+  const messages = isUsingSQLChat ? sqlChat.messages : 
+                   isUsingNoSQLChat ? noSQLChat.messages : 
+                   externalMessages;
+  
+  const isTyping = isUsingSQLChat ? sqlChat.isTyping : 
+                   isUsingNoSQLChat ? noSQLChat.isTyping : 
+                   externalIsTyping;
+  
+  const error = isUsingSQLChat ? sqlChat.error : 
+                isUsingNoSQLChat ? noSQLChat.error : 
+                null;
 
-  // Initialize SQL chat if needed
+  // Initialize chats when opened
   useEffect(() => {
-    if (isUsingSQLChat && isOpen) {
-      sqlChat.initializeChat();
+    if (isOpen) {
+      if (isUsingSQLChat) {
+        sqlChat.initializeChat();
+      } else if (isUsingNoSQLChat) {
+        noSQLChat.initializeChat();
+      }
     }
-  }, [isUsingSQLChat, isOpen, uploadId]);
+  }, [isUsingSQLChat, isUsingNoSQLChat, isOpen, uploadId, noSQLConnection]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -61,6 +82,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     if (isUsingSQLChat) {
       await sqlChat.sendMessage(messageContent);
+    } else if (isUsingNoSQLChat) {
+      await noSQLChat.sendMessage(messageContent);
     } else if (externalOnSendMessage) {
       externalOnSendMessage(messageContent);
     }
@@ -69,6 +92,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleClear = () => {
     if (isUsingSQLChat) {
       sqlChat.clearChat();
+    } else if (isUsingNoSQLChat) {
+      noSQLChat.clearChat();
     } else if (externalOnClear) {
       externalOnClear();
     }
@@ -78,6 +103,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const chatData = {
       chatbotType,
       uploadId,
+      noSQLConnection: noSQLConnection ? {
+        databaseName: noSQLConnection.databaseName,
+        collectionName: noSQLConnection.collectionName,
+        isAuthenticated: noSQLConnection.isAuthenticated
+      } : null,
       messages,
       exportedAt: new Date().toISOString(),
     };
@@ -108,7 +138,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return {
           name: 'NoSQL Navigator',
           color: 'from-purple-500 to-pink-500',
-          description: 'Connected to NoSQL Database',
+          description: noSQLConnection?.isAuthenticated 
+            ? `Connected to ${noSQLConnection.databaseName}.${noSQLConnection.collectionName}` 
+            : 'NoSQL Database (Setup Required)',
         };
       default:
         return {
@@ -140,7 +172,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </pre>
             </div>
           ) : (
-            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+            <div className="text-sm whitespace-pre-wrap"
+              dangerouslySetInnerHTML={{
+                __html: message.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/```javascript\n([\s\S]*?)\n```/g, '<pre class="bg-gray-800 p-2 rounded mt-2 text-xs overflow-x-auto"><code>$1</code></pre>')
+                  .replace(/```json\n([\s\S]*?)\n```/g, '<pre class="bg-gray-800 p-2 rounded mt-2 text-xs overflow-x-auto"><code>$1</code></pre>')
+                  .replace(/`([^`]+)`/g, '<code class="bg-gray-800 px-1 rounded text-xs">$1</code>')
+              }}
+            />
           )}
           <p className={`text-xs mt-1 ${
             message.type === 'user' ? 'text-black/70' : 'text-gray-400'
@@ -156,8 +195,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const chatbotInfo = getChatbotInfo();
 
-  // Show connection warning for SQL chatbot without uploadId
-  const showConnectionWarning = chatbotType === 'sql' && !uploadId;
+  // Show connection warning
+  const showConnectionWarning = (chatbotType === 'sql' && !uploadId) || 
+                               (chatbotType === 'nosql' && !noSQLConnection?.isAuthenticated);
 
   // Maximized view (full screen)
   if (isMaximized) {
@@ -219,7 +259,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <AlertCircle size={20} className="text-yellow-400 flex-shrink-0" />
             <div>
               <p className="text-yellow-400 text-sm font-medium">Database Setup Required</p>
-              <p className="text-yellow-400/80 text-xs">Please complete the database setup process to start chatting.</p>
+              <p className="text-yellow-400/80 text-xs">
+                {chatbotType === 'sql' ? 'Please complete the SQL database setup process to start chatting.' : 'Please complete the NoSQL database connection process to start chatting.'}
+              </p>
             </div>
           </div>
         )}
