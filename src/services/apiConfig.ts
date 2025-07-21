@@ -4,7 +4,7 @@ const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // Increased timeout for NoSQL operations
+  timeout: 70000, // Increased timeout for NoSQL operations
   headers: {
     'Content-Type': 'application/json',
   },

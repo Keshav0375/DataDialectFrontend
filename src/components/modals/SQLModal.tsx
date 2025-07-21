@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Database, Loader2, CheckCircle, AlertCircle, Upload, FileText, Code, Play, Pause, Volume2, VolumeX, Maximize, RotateCcw } from 'lucide-react';
 import { DatabaseConnection, DatabaseCredentials } from '../../types';
 import { apiService } from '../../services/api';
+import csvPreviewVideo from './csv_preview.mp4';
+import pyPreviewVideo from './py_preview.mp4';
 
 interface SQLModalProps {
   isOpen: boolean;
@@ -429,7 +431,7 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
               <div className="mb-6">
                 <h4 className="text-md font-medium text-white mb-3">How to Upload CSV Files</h4>
                 <VideoPlayer
-                  src="https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4"
+                  src={csvPreviewVideo}
                   isPlaying={csvVideoPlaying}
                   setIsPlaying={setCsvVideoPlaying}
                   isMuted={csvVideoMuted}
@@ -519,7 +521,7 @@ const SQLModal: React.FC<SQLModalProps> = ({ isOpen, onClose, onConnect }) => {
               <div className="mb-6">
                 <h4 className="text-md font-medium text-white mb-3">Python Script Integration Guide</h4>
                 <VideoPlayer
-                  src="https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_2mb.mp4"
+                  src={pyPreviewVideo}
                   isPlaying={pythonVideoPlaying}
                   setIsPlaying={setPythonVideoPlaying}
                   isMuted={pythonVideoMuted}
