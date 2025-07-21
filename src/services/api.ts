@@ -12,6 +12,33 @@ import {
   APIError,
 } from '../types';
 
+export interface DocumentUploadResponse {
+  success: boolean;
+  message: string;
+  collection_id: string;
+  total_files: number;
+  documents: Array<{
+    file_id: number;
+    filename: string;
+    collection_id: string;
+    file_size: number;
+    file_type: string;
+    status: string;
+  }>;
+  file_ids: number[];
+}
+
+export interface RAGChatRequest {
+  question: string;
+  session_id?: string;
+  document_ids?: number[];
+}
+
+export interface RAGChatResponse {
+  answer: string;
+  session_id: string;
+}
+
 class APIService {
   async uploadCredentials(credentials: DatabaseCredentials): Promise<UploadResponse> {
     try {
@@ -159,6 +186,56 @@ class APIService {
       return response.data;
     } catch (error: any) {
       throw this.handleError(error, 'Health check failed');
+    }
+  }
+
+  async uploadDocuments(files: File[]): Promise<DocumentUploadResponse> {
+  try {
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append('files', file);
+    });
+
+    const response: AxiosResponse<DocumentUploadResponse> = await api.post(
+      '/upload-doc',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 60000, // 60 seconds for file uploads
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+      throw this.handleError(error, 'Failed to upload documents');
+    }
+  }
+
+  async chatWithDocuments(request: RAGChatRequest): Promise<RAGChatResponse> {
+    try {
+      const response: AxiosResponse<RAGChatResponse> = await api.post('/rag-chat', request);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error, 'Failed to chat with documents');
+    }
+  }
+
+  async listDocuments(): Promise<any[]> {
+    try {
+      const response: AxiosResponse<any[]> = await api.get('/list-docs');
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error, 'Failed to list documents');
+    }
+  }
+
+  async deleteDocuments(fileIds: number[]): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await api.post('/delete-docs', fileIds);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error, 'Failed to delete documents');
     }
   }
 

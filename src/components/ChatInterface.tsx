@@ -3,6 +3,7 @@ import { Send, Minimize2, Maximize2, X, History, Download, Trash2, Code, AlertCi
 import { ChatMessage, ChatbotType, NoSQLConnection } from '../types';
 import { useSQLChat } from '../hooks/useSQLChat';
 import { useNoSQLChat } from '../hooks/useNoSQLChat';
+import { useDocumentChat } from '../hooks/useDocumentChat';
 
 interface ChatInterfaceProps {
   isOpen: boolean;
@@ -14,7 +15,9 @@ interface ChatInterfaceProps {
   onClear?: () => void;
   uploadId?: string; // For SQL chatbot
   noSQLConnection?: NoSQLConnection; // For NoSQL chatbot
+  uploadedDocuments?: any[];
 }
+
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   isOpen,
@@ -26,12 +29,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onClear: externalOnClear,
   uploadId,
   noSQLConnection,
+  uploadedDocuments,
 }) => {
   const [input, setInput] = useState('');
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isUsingSQLChat = chatbotType === 'sql' && uploadId;
+  const isUsingNoSQLChat = chatbotType === 'nosql' && noSQLConnection?.isAuthenticated;
+  const isUsingDocumentChat = chatbotType === 'document' && uploadedDocuments && uploadedDocuments.length > 0;
 
   // Use appropriate chat hook based on chatbot type
   const sqlChat = useSQLChat({ 
@@ -42,32 +49,40 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     connection: chatbotType === 'nosql' ? noSQLConnection || null : null
   });
 
+  const documentChat = useDocumentChat({
+    documents: chatbotType === 'document' ? uploadedDocuments : undefined
+  });
+
   // Determine which chat system to use
-  const isUsingSQLChat = chatbotType === 'sql' && uploadId;
-  const isUsingNoSQLChat = chatbotType === 'nosql' && noSQLConnection?.isAuthenticated;
-  
+  const isUsingDocumentChat = chatbotType === 'document' && uploadedDocuments && uploadedDocuments.length > 0;
+
   const messages = isUsingSQLChat ? sqlChat.messages : 
-                   isUsingNoSQLChat ? noSQLChat.messages : 
-                   externalMessages;
-  
+                  isUsingNoSQLChat ? noSQLChat.messages : 
+                  isUsingDocumentChat ? documentChat.messages :
+                  externalMessages;
+
   const isTyping = isUsingSQLChat ? sqlChat.isTyping : 
-                   isUsingNoSQLChat ? noSQLChat.isTyping : 
-                   externalIsTyping;
-  
+                  isUsingNoSQLChat ? noSQLChat.isTyping : 
+                  isUsingDocumentChat ? documentChat.isTyping :
+                  externalIsTyping;
+
   const error = isUsingSQLChat ? sqlChat.error : 
                 isUsingNoSQLChat ? noSQLChat.error : 
+                isUsingDocumentChat ? documentChat.error :
                 null;
 
   // Initialize chats when opened
   useEffect(() => {
-    if (isOpen) {
-      if (isUsingSQLChat) {
-        sqlChat.initializeChat();
-      } else if (isUsingNoSQLChat) {
-        noSQLChat.initializeChat();
-      }
+  if (isOpen) {
+    if (isUsingSQLChat) {
+      sqlChat.initializeChat();
+    } else if (isUsingNoSQLChat) {
+      noSQLChat.initializeChat();
+    } else if (isUsingDocumentChat) {
+      documentChat.initializeChat();
     }
-  }, [isUsingSQLChat, isUsingNoSQLChat, isOpen, uploadId, noSQLConnection]);
+  }
+  }, [isUsingSQLChat, isUsingNoSQLChat, isUsingDocumentChat, isOpen]);;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -84,6 +99,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       await sqlChat.sendMessage(messageContent);
     } else if (isUsingNoSQLChat) {
       await noSQLChat.sendMessage(messageContent);
+    } else if (isUsingDocumentChat) {
+      await documentChat.sendMessage(messageContent);
     } else if (externalOnSendMessage) {
       externalOnSendMessage(messageContent);
     }
@@ -94,6 +111,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       sqlChat.clearChat();
     } else if (isUsingNoSQLChat) {
       noSQLChat.clearChat();
+    } else if (isUsingDocumentChat) {
+      documentChat.clearChat();
     } else if (externalOnClear) {
       externalOnClear();
     }
@@ -197,8 +216,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   // Show connection warning
   const showConnectionWarning = (chatbotType === 'sql' && !uploadId) || 
-                               (chatbotType === 'nosql' && !noSQLConnection?.isAuthenticated);
-
+                             (chatbotType === 'nosql' && !noSQLConnection?.isAuthenticated) ||
+                             (chatbotType === 'document' && (!uploadedDocuments || uploadedDocuments.length === 0));
   // Maximized view (full screen)
   if (isMaximized) {
     return (

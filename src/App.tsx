@@ -17,6 +17,8 @@ function App() {
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [showNoSQLModal, setShowNoSQLModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]);
+
   
   // SQL-specific state
   const [sqlConnection, setSqlConnection] = useState<DatabaseConnection | null>(null);
@@ -59,11 +61,25 @@ function App() {
     clearChat();
   };
 
-  const handleDocumentUpload = (documents: UploadedDocument[]) => {
-    setActiveChatbot('document');
-    setShowChat(true);
-    setShowDocumentModal(false);
-    sendMessage(`Successfully uploaded ${documents.length} document${documents.length > 1 ? 's' : ''}. Ready to analyze!`);
+  const handleDocumentUpload = async (documents: UploadedDocument[]) => {
+    try {
+      // Convert UploadedDocument to the format needed for chat
+      const documentsForChat = documents.map(doc => ({
+        file_id: doc.file_id, // This should come from the API response
+        filename: doc.name,
+        size: doc.size,
+      }));
+      
+      setUploadedDocuments(documentsForChat);
+      setActiveChatbot('document');
+      setShowChat(true);
+      setShowDocumentModal(false);
+      
+      // Clear any existing chat
+      clearChat();
+    } catch (error) {
+      console.error('Error setting up document chat:', error);
+    }
   };
 
   const handleNoSQLConnect = (connection: NoSQLConnection) => {
@@ -81,6 +97,7 @@ function App() {
     setActiveChatbot(null);
     setSqlConnection(null);
     setNoSQLConnection(null);
+    setUploadedDocuments([]); 
     clearChat();
   };
 

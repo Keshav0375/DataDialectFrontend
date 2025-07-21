@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { X, Upload, File, CheckCircle } from 'lucide-react';
 import { UploadedDocument } from '../../types';
+import { apiService } from '../../services/api';
 
 interface DocumentModalProps {
   isOpen: boolean;
@@ -34,35 +35,82 @@ const DocumentModal: React.FC<DocumentModalProps> = ({ isOpen, onClose, onUpload
     processFiles(files);
   }, []);
 
-  const processFiles = (files: File[]) => {
-    const newDocuments: UploadedDocument[] = files.map(file => ({
-      id: Date.now().toString() + Math.random(),
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      uploadProgress: 0,
-    }));
+  // Replace the processFiles function
+const processFiles = async (files: File[]) => {
+  const newDocuments: UploadedDocument[] = files.map(file => ({
+    id: Date.now().toString() + Math.random(),
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    uploadProgress: 0,
+  }));
 
-    setDocuments(prev => [...prev, ...newDocuments]);
+  setDocuments(prev => [...prev, ...newDocuments]);
 
-    // Simulate upload progress
+  try {
+    // Start upload progress animation
     newDocuments.forEach(doc => {
       let progress = 0;
       const interval = setInterval(() => {
-        progress += Math.random() * 30;
-        if (progress >= 100) {
-          progress = 100;
+        progress += Math.random() * 20;
+        if (progress >= 90) { // Stop at 90% until real upload completes
           clearInterval(interval);
         }
         
         setDocuments(prev => 
           prev.map(d => 
-            d.id === doc.id ? { ...d, uploadProgress: progress } : d
+            d.id === doc.id ? { ...d, uploadProgress: Math.min(progress, 90) } : d
           )
         );
-      }, 300);
+      }, 200);
     });
-  };
+
+    // Call the actual upload API
+    const uploadResponse = await apiService.uploadDocuments(files);
+    
+    if (uploadResponse.success) {
+      // Complete the progress for all files
+      setDocuments(prev => 
+        prev.map(d => ({ ...d, uploadProgress: 100 }))
+      );
+      
+      // Store the actual file IDs for later use
+      const documentsWithIds = newDocuments.map((doc, index) => ({
+        ...doc,
+        file_id: uploadResponse.documents[index]?.file_id,
+        uploadProgress: 100,
+      }));
+      
+      setDocuments(prev => {
+        // Replace the temporary documents with ones that have real IDs
+        const filtered = prev.filter(d => !newDocuments.find(nd => nd.id === d.id));
+        return [...filtered, ...documentsWithIds];
+      });
+    } else {
+      throw new Error('Upload failed');
+    }
+    
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    
+    // Mark failed uploads
+    setDocuments(prev => 
+      prev.map(d => 
+        newDocuments.find(nd => nd.id === d.id) 
+          ? { ...d, uploadProgress: 0, error: error.message } 
+          : d
+      )
+    );
+  }
+};
+
+// Update the handleContinue function
+const handleContinue = () => {
+  const successfulUploads = documents.filter(doc => doc.uploadProgress === 100);
+  onUpload(successfulUploads);
+  onClose();
+  setDocuments([]);
+};
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -72,11 +120,6 @@ const DocumentModal: React.FC<DocumentModalProps> = ({ isOpen, onClose, onUpload
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const handleContinue = () => {
-    onUpload(documents);
-    onClose();
-    setDocuments([]);
-  };
 
   if (!isOpen) return null;
 

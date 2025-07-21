@@ -135,3 +135,42 @@ export interface QueryExecutionResult {
   execution_stats?: Record<string, any>;
   error?: string;
 }
+
+export interface DocumentUploadResponse {
+  success: boolean;
+  message: string;
+  collection_id: string;
+  total_files: number;
+  documents: Array<{
+    file_id: number;
+    filename: string;
+    collection_id: string;
+    file_size: number;
+    file_type: string;
+    status: string;
+  }>;
+  file_ids: number[];
+}
+
+export interface RAGChatRequest {
+  question: string;
+  session_id?: string;
+  document_ids?: number[];
+}
+
+export interface RAGChatResponse {
+  answer: string;
+  session_id: string;
+}
+
+// Update UploadedDocument interface
+export interface UploadedDocument {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  uploadProgress: number;
+  url?: string;
+  file_id?: number; // Add this for API integration
+  error?: string; // Add this for error handling
+}
