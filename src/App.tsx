@@ -19,7 +19,6 @@ function App() {
   const [showChat, setShowChat] = useState(false);
   const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]);
 
-  
   // SQL-specific state
   const [sqlConnection, setSqlConnection] = useState<DatabaseConnection | null>(null);
   
@@ -56,8 +55,6 @@ function App() {
     setActiveChatbot('sql');
     setShowChat(true);
     setShowSQLModal(false);
-    
-    // Clear any existing chat
     clearChat();
   };
 
@@ -65,7 +62,7 @@ function App() {
     try {
       // Convert UploadedDocument to the format needed for chat
       const documentsForChat = documents.map(doc => ({
-        file_id: doc.file_id, // This should come from the API response
+        file_id: doc.file_id,
         filename: doc.name,
         size: doc.size,
       }));
@@ -74,8 +71,6 @@ function App() {
       setActiveChatbot('document');
       setShowChat(true);
       setShowDocumentModal(false);
-      
-      // Clear any existing chat
       clearChat();
     } catch (error) {
       console.error('Error setting up document chat:', error);
@@ -87,8 +82,6 @@ function App() {
     setActiveChatbot('nosql');
     setShowChat(true);
     setShowNoSQLModal(false);
-    
-    // Clear any existing chat
     clearChat();
   };
 
@@ -97,7 +90,7 @@ function App() {
     setActiveChatbot(null);
     setSqlConnection(null);
     setNoSQLConnection(null);
-    setUploadedDocuments([]); 
+    setUploadedDocuments([]);
     clearChat();
   };
 
@@ -134,13 +127,14 @@ function App() {
       <ChatInterface
         isOpen={showChat}
         chatbotType={activeChatbot}
-        messages={activeChatbot === 'sql' || activeChatbot === 'nosql' ? undefined : messages}
-        isTyping={activeChatbot === 'sql' || activeChatbot === 'nosql' ? undefined : isTyping}
-        onSendMessage={activeChatbot === 'sql' || activeChatbot === 'nosql' ? undefined : sendMessage}
+        messages={activeChatbot === 'sql' || activeChatbot === 'nosql' || activeChatbot === 'document' ? undefined : messages}
+        isTyping={activeChatbot === 'sql' || activeChatbot === 'nosql' || activeChatbot === 'document' ? undefined : isTyping}
+        onSendMessage={activeChatbot === 'sql' || activeChatbot === 'nosql' || activeChatbot === 'document' ? undefined : sendMessage}
         onClose={handleCloseChat}
-        onClear={activeChatbot === 'sql' || activeChatbot === 'nosql' ? undefined : handleClearChat}
+        onClear={activeChatbot === 'sql' || activeChatbot === 'nosql' || activeChatbot === 'document' ? undefined : handleClearChat}
         uploadId={sqlConnection?.upload_id}
         noSQLConnection={noSQLConnection}
+        uploadedDocuments={uploadedDocuments}
       />
     </div>
   );

@@ -29,6 +29,8 @@ export interface UploadedDocument {
   type: string;
   uploadProgress: number;
   url?: string;
+  file_id?: number; // For API integration
+  error?: string; // For error handling
 }
 
 export type ChatbotType = 'sql' | 'document' | 'nosql' | null;
@@ -161,16 +163,4 @@ export interface RAGChatRequest {
 export interface RAGChatResponse {
   answer: string;
   session_id: string;
-}
-
-// Update UploadedDocument interface
-export interface UploadedDocument {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  uploadProgress: number;
-  url?: string;
-  file_id?: number; // Add this for API integration
-  error?: string; // Add this for error handling
 }

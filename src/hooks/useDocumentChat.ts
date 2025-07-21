@@ -30,11 +30,11 @@ export const useDocumentChat = ({ documents }: UseDocumentChatProps): UseDocumen
 
 I can help you analyze and query your uploaded documents. Here are some things you can ask:
 
-- "What are the main topics covered in these documents?"
-- "Summarize the key findings"
-- "Find information about [specific topic]"
-- "Compare different sections or documents"
-- "Extract specific data or facts"
+• "What are the main topics covered in these documents?"
+• "Summarize the key findings"
+• "Find information about [specific topic]"
+• "Compare different sections or documents"
+• "Extract specific data or facts"
 
 What would you like to know about your documents?`,
         timestamp: new Date(),
@@ -63,6 +63,9 @@ What would you like to know about your documents?`,
     setError(null);
 
     try {
+      // Generate a consistent session ID for the chat
+      const sessionId = `document-session-${Date.now()}`;
+      
       // Call the RAG chat API
       const response = await fetch('http://localhost:8000/api/v1/rag-chat', {
         method: 'POST',
@@ -71,13 +74,14 @@ What would you like to know about your documents?`,
         },
         body: JSON.stringify({
           question: userMessage,
-          session_id: 'document-session-' + Date.now(),
-          document_ids: documents?.map(doc => doc.file_id) || []
+          session_id: sessionId,
+          document_ids: documents?.map(doc => doc.file_id).filter(Boolean) || []
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.detail || `HTTP error! status: ${response.status}`);
       }
 
       const result = await response.json();

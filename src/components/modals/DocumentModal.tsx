@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { X, Upload, File, CheckCircle } from 'lucide-react';
+import { X, Upload, File, CheckCircle, AlertTriangle } from 'lucide-react';
 import { UploadedDocument } from '../../types';
 import { apiService } from '../../services/api';
 
@@ -35,82 +35,85 @@ const DocumentModal: React.FC<DocumentModalProps> = ({ isOpen, onClose, onUpload
     processFiles(files);
   }, []);
 
-  // Replace the processFiles function
-const processFiles = async (files: File[]) => {
-  const newDocuments: UploadedDocument[] = files.map(file => ({
-    id: Date.now().toString() + Math.random(),
-    name: file.name,
-    size: file.size,
-    type: file.type,
-    uploadProgress: 0,
-  }));
+  const processFiles = async (files: File[]) => {
+    const newDocuments: UploadedDocument[] = files.map(file => ({
+      id: Date.now().toString() + Math.random(),
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      uploadProgress: 0,
+    }));
 
-  setDocuments(prev => [...prev, ...newDocuments]);
+    setDocuments(prev => [...prev, ...newDocuments]);
 
-  try {
-    // Start upload progress animation
-    newDocuments.forEach(doc => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 20;
-        if (progress >= 90) { // Stop at 90% until real upload completes
-          clearInterval(interval);
-        }
+    try {
+      // Start upload progress animation with interval tracking
+      const intervals: NodeJS.Timeout[] = [];
+      
+      newDocuments.forEach(doc => {
+        let progress = 0;
+        const interval = setInterval(() => {
+          progress += Math.random() * 20;
+          if (progress >= 90) { // Stop at 90% until real upload completes
+            clearInterval(interval);
+          }
+          
+          setDocuments(prev => 
+            prev.map(d => 
+              d.id === doc.id ? { ...d, uploadProgress: Math.min(progress, 90) } : d
+            )
+          );
+        }, 200);
         
-        setDocuments(prev => 
-          prev.map(d => 
-            d.id === doc.id ? { ...d, uploadProgress: Math.min(progress, 90) } : d
-          )
-        );
-      }, 200);
-    });
-
-    // Call the actual upload API
-    const uploadResponse = await apiService.uploadDocuments(files);
-    
-    if (uploadResponse.success) {
-      // Complete the progress for all files
-      setDocuments(prev => 
-        prev.map(d => ({ ...d, uploadProgress: 100 }))
-      );
-      
-      // Store the actual file IDs for later use
-      const documentsWithIds = newDocuments.map((doc, index) => ({
-        ...doc,
-        file_id: uploadResponse.documents[index]?.file_id,
-        uploadProgress: 100,
-      }));
-      
-      setDocuments(prev => {
-        // Replace the temporary documents with ones that have real IDs
-        const filtered = prev.filter(d => !newDocuments.find(nd => nd.id === d.id));
-        return [...filtered, ...documentsWithIds];
+        intervals.push(interval);
       });
-    } else {
-      throw new Error('Upload failed');
-    }
-    
-  } catch (error: any) {
-    console.error('Upload error:', error);
-    
-    // Mark failed uploads
-    setDocuments(prev => 
-      prev.map(d => 
-        newDocuments.find(nd => nd.id === d.id) 
-          ? { ...d, uploadProgress: 0, error: error.message } 
-          : d
-      )
-    );
-  }
-};
 
-// Update the handleContinue function
-const handleContinue = () => {
-  const successfulUploads = documents.filter(doc => doc.uploadProgress === 100);
-  onUpload(successfulUploads);
-  onClose();
-  setDocuments([]);
-};
+      // Call the actual upload API
+      const uploadResponse = await apiService.uploadDocuments(files);
+      
+      // Clear all intervals once upload is complete
+      intervals.forEach(interval => clearInterval(interval));
+      
+      if (uploadResponse.success) {
+        // Complete the progress for all files and add file_ids
+        setDocuments(prev => 
+          prev.map((d, index) => {
+            const newDocIndex = newDocuments.findIndex(nd => nd.id === d.id);
+            if (newDocIndex !== -1) {
+              const uploadedDoc = uploadResponse.documents[newDocIndex];
+              return { 
+                ...d, 
+                uploadProgress: 100,
+                file_id: uploadedDoc?.file_id
+              };
+            }
+            return d;
+          })
+        );
+      } else {
+        throw new Error(uploadResponse.message || 'Upload failed');
+      }
+      
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      
+      // Mark failed uploads
+      setDocuments(prev => 
+        prev.map(d => 
+          newDocuments.find(nd => nd.id === d.id) 
+            ? { ...d, uploadProgress: 0, error: error.message } 
+            : d
+        )
+      );
+    }
+  };
+
+  const handleContinue = () => {
+    const successfulUploads = documents.filter(doc => doc.uploadProgress === 100 && !doc.error);
+    onUpload(successfulUploads);
+    onClose();
+    setDocuments([]);
+  };
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -119,7 +122,6 @@ const handleContinue = () => {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
-
 
   if (!isOpen) return null;
 
@@ -185,20 +187,30 @@ const handleContinue = () => {
                   <div key={doc.id} className="bg-[#121212] rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
-                        <File size={20} className="text-green-400" />
+                        <File size={20} className={doc.error ? "text-red-400" : "text-green-400"} />
                         <div>
                           <p className="text-white font-medium truncate">{doc.name}</p>
                           <p className="text-gray-400 text-sm">{formatFileSize(doc.size)}</p>
+                          {doc.error && (
+                            <p className="text-red-400 text-xs mt-1">{doc.error}</p>
+                          )}
                         </div>
                       </div>
-                      {doc.uploadProgress === 100 && (
+                      {doc.uploadProgress === 100 && !doc.error && (
                         <CheckCircle size={20} className="text-green-400" />
+                      )}
+                      {doc.error && (
+                        <AlertTriangle size={20} className="text-red-400" />
                       )}
                     </div>
                     <div className="w-full bg-gray-700 rounded-full h-2">
                       <div
-                        className="bg-gradient-to-r from-green-500 to-emerald-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${doc.uploadProgress}%` }}
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          doc.error 
+                            ? 'bg-red-500' 
+                            : 'bg-gradient-to-r from-green-500 to-emerald-500'
+                        }`}
+                        style={{ width: `${doc.error ? 100 : doc.uploadProgress}%` }}
                       />
                     </div>
                   </div>
@@ -207,12 +219,12 @@ const handleContinue = () => {
             </div>
           )}
 
-          {documents.length > 0 && documents.every(doc => doc.uploadProgress === 100) && (
+          {documents.length > 0 && documents.some(doc => doc.uploadProgress === 100 && !doc.error) && (
             <button
               onClick={handleContinue}
               className="w-full mt-6 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity"
             >
-              Continue with {documents.length} document{documents.length > 1 ? 's' : ''}
+              Continue with {documents.filter(doc => doc.uploadProgress === 100 && !doc.error).length} document{documents.filter(doc => doc.uploadProgress === 100 && !doc.error).length > 1 ? 's' : ''}
             </button>
           )}
         </div>

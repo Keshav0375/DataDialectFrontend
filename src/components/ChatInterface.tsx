@@ -13,11 +13,10 @@ interface ChatInterfaceProps {
   onSendMessage?: (message: string) => void;
   onClose: () => void;
   onClear?: () => void;
-  uploadId?: string; // For SQL chatbot
-  noSQLConnection?: NoSQLConnection; // For NoSQL chatbot
+  uploadId?: string;
+  noSQLConnection?: NoSQLConnection;
   uploadedDocuments?: any[];
 }
-
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   isOpen,
@@ -36,6 +35,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isMaximized, setIsMaximized] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Determine which chat system to use
   const isUsingSQLChat = chatbotType === 'sql' && uploadId;
   const isUsingNoSQLChat = chatbotType === 'nosql' && noSQLConnection?.isAuthenticated;
   const isUsingDocumentChat = chatbotType === 'document' && uploadedDocuments && uploadedDocuments.length > 0;
@@ -52,9 +53,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const documentChat = useDocumentChat({
     documents: chatbotType === 'document' ? uploadedDocuments : undefined
   });
-
-  // Determine which chat system to use
-  const isUsingDocumentChat = chatbotType === 'document' && uploadedDocuments && uploadedDocuments.length > 0;
 
   const messages = isUsingSQLChat ? sqlChat.messages : 
                   isUsingNoSQLChat ? noSQLChat.messages : 
@@ -73,16 +71,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   // Initialize chats when opened
   useEffect(() => {
-  if (isOpen) {
-    if (isUsingSQLChat) {
-      sqlChat.initializeChat();
-    } else if (isUsingNoSQLChat) {
-      noSQLChat.initializeChat();
-    } else if (isUsingDocumentChat) {
-      documentChat.initializeChat();
+    if (isOpen) {
+      if (isUsingSQLChat) {
+        sqlChat.initializeChat();
+      } else if (isUsingNoSQLChat) {
+        noSQLChat.initializeChat();
+      } else if (isUsingDocumentChat) {
+        documentChat.initializeChat();
+      }
     }
-  }
-  }, [isUsingSQLChat, isUsingNoSQLChat, isUsingDocumentChat, isOpen]);;
+  }, [isUsingSQLChat, isUsingNoSQLChat, isUsingDocumentChat, isOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -127,6 +125,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         collectionName: noSQLConnection.collectionName,
         isAuthenticated: noSQLConnection.isAuthenticated
       } : null,
+      uploadedDocuments: uploadedDocuments ? uploadedDocuments.length : 0,
       messages,
       exportedAt: new Date().toISOString(),
     };
@@ -151,7 +150,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return {
           name: 'Document AI',
           color: 'from-green-500 to-emerald-500',
-          description: 'Analyzing uploaded documents',
+          description: uploadedDocuments && uploadedDocuments.length > 0 
+            ? `Analyzing ${uploadedDocuments.length} document(s)` 
+            : 'Document Upload Required',
         };
       case 'nosql':
         return {
@@ -218,6 +219,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const showConnectionWarning = (chatbotType === 'sql' && !uploadId) || 
                              (chatbotType === 'nosql' && !noSQLConnection?.isAuthenticated) ||
                              (chatbotType === 'document' && (!uploadedDocuments || uploadedDocuments.length === 0));
+
   // Maximized view (full screen)
   if (isMaximized) {
     return (
@@ -277,9 +279,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <div className="mx-6 mt-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center gap-3">
             <AlertCircle size={20} className="text-yellow-400 flex-shrink-0" />
             <div>
-              <p className="text-yellow-400 text-sm font-medium">Database Setup Required</p>
+              <p className="text-yellow-400 text-sm font-medium">Setup Required</p>
               <p className="text-yellow-400/80 text-xs">
-                {chatbotType === 'sql' ? 'Please complete the SQL database setup process to start chatting.' : 'Please complete the NoSQL database connection process to start chatting.'}
+                {chatbotType === 'sql' ? 'Please complete the SQL database setup process to start chatting.' : 
+                 chatbotType === 'nosql' ? 'Please complete the NoSQL database connection process to start chatting.' :
+                 'Please upload documents to start chatting.'}
               </p>
             </div>
           </div>
@@ -335,7 +339,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={showConnectionWarning ? "Complete database setup to start chatting..." : "Ask about your data..."}
+              placeholder={showConnectionWarning ? "Complete setup to start chatting..." : "Ask about your data..."}
               className="flex-1 px-6 py-4 bg-[#121212] border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none transition-colors text-lg"
               disabled={showConnectionWarning}
             />
@@ -420,7 +424,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <AlertCircle size={16} className="text-yellow-400 flex-shrink-0" />
               <div>
                 <p className="text-yellow-400 text-xs font-medium">Setup Required</p>
-                <p className="text-yellow-400/80 text-xs">Complete database setup first.</p>
+                <p className="text-yellow-400/80 text-xs">
+                  {chatbotType === 'document' ? 'Upload documents first.' : 'Complete database setup first.'}
+                </p>
               </div>
             </div>
           )}
